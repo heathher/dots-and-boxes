@@ -1,8 +1,13 @@
 #lang racket
-(require racket/class
-         racket/set
-         compatibility/mlist
-         lazy/force)
+(require racket/class racket/set compatibility/mlist lazy/force)
+(provide game% interactive-player a% b% input-move empty-board start-game user-A user-B player-A player-B
+         cur-board as bs my-turn sticks end-game?)
+
+
+(define my-turn #t)
+
+;; первый игрок-пользователь с ожиданием ввода хода				   
+
 
 ;;--------------------------------------------------------------------
 ;; Реализация минимакса с альфа-бета отсечением
@@ -60,7 +65,8 @@
                 opponent-move   ; State Move -> State
                 possible-moves  ; State -> (list Move)
                 show-state)     ; State -> Any
-
+                
+   
     ;; optimal-move :: State -> Move
     ;; выбор оптимального хода по минимаксу 
     ;; из нескольких оптимальных выбирается один случайно
@@ -86,13 +92,14 @@
 
     (define/public (make-move S move)
       (if (my-loss? S)   (values '() S 'loss) 
-        (let* ((m* (! (move S)))
+        (let* ((m* (!(move S)))
               (S* (my-move S m* #t)))
           (cond ((end-game? S*) (values m* S* 'end))
                 ((my-win? S*) (values m* S* 'win))
                 (else (values m* S* 'next)))
 	)))
   ))
+
 ; State -> Bool  ;; окончание игры - все палочки расставлены и клетки заполнены
 (define (end-game? s)
   ;; случай, когда клеток у одного из игроков больше половины - досрочная победа
@@ -106,13 +113,23 @@
     (inherit make-move optimal-move)
     
     (init-field name
+                [last-move '(0 0 0)] ; для гуи
+                [gui #f]       ; для гуи 
                 [look-ahead 1]
                 [move-method (optimal-move look-ahead)]
                 [opponent 'undefined]
                 )
+
+    ;; для гуи
+    (define/public (set!-value move)
+      (set! last-move move))
+
+    (define/public (get-move) last-move)
  
     (define/public (your-turn S)
-      (define-values (m S* status) (make-move S move-method))
+      (define-values (m S* status) (make-move S (if gui (lambda(x) last-move) move-method)))
+      (! (set! cur-board S*))
+      (! (set! last-move m))
       (! (printf "\n~a makes move ~a\n" name m))
       (! (show-state S*))
       (! (case status
@@ -126,8 +143,14 @@
               (if sq
                   (begin
                     (set! squares-positions (list->mlist (remove sq (mlist->list squares-positions))))
-                    (send this your-turn S*))
-                  (send opponent your-turn S*)))]
+                    ;(send this your-turn S*))
+                  )
+                  (if my-turn
+                      (set! my-turn #f)
+                      (set! my-turn #t))
+                  ;(send opponent your-turn S*)
+                  
+                      ))]
            )))))
 
 ;;--------------------------------------------------------------------
@@ -158,7 +181,7 @@
       (display "*")
       (if (set-member? (sticks b) (list i j 0))(printf "-")(printf " ")))
     (display "*\n")
-    ;;второй ряд
+    ;; второй ряд
     (printf "  ")
     (for ([j '(0 1 2 3 4)])
       (if (set-member? (sticks b) (list i j 1))(printf "|")(printf " "))
@@ -176,29 +199,32 @@
   (display "*\n")
   )
 
-; доска задается при помощи палочек и букв первого и второго игрока
+;; доска задается при помощи палочек и букв первого и второго игрока
 (struct board (sticks a b))
 
-; геттеры полей структуры доски
+
+;; геттеры полей структуры доски
 (define sticks board-sticks)
 (define as board-a)
 (define bs board-b)
 
-; начальное состояние доски
+;; начальное состояние доски
 (define empty-board (board (set) (set) (set)))
 
-; все возможные ходы игрока
-; первые два числа - координаты левого верхнего угла
-; третье: 0 - горизонтальная палка, 1 - вертикальная палка 
+(define cur-board empty-board)
+
+;; все возможные ходы игрока
+;; первые два числа - координаты левого верхнего угла
+;; третье: 0 - горизонтальная палка, 1 - вертикальная палка 
 (define all-sticks
-  ; горизонтальные палки 
+  ;; горизонтальные палки 
   (set '(0 0 0) '(0 1 0) '(0 2 0) '(0 3 0) '(0 4 0)
        '(1 0 0) '(1 1 0) '(1 2 0) '(1 3 0) '(1 4 0)
        '(2 0 0) '(2 1 0) '(2 2 0) '(2 3 0) '(2 4 0)
        '(3 0 0) '(3 1 0) '(3 2 0) '(3 3 0) '(3 4 0)
        '(4 0 0) '(4 1 0) '(4 2 0) '(4 3 0) '(4 4 0)
        '(5 0 0) '(5 1 0) '(5 2 0) '(5 3 0) '(5 4 0)
-  ; вертикальные палки
+  ;; вертикальные палки
        '(0 0 1) '(0 1 1) '(0 2 1) '(0 3 1) '(0 4 1) '(0 5 1)
        '(1 0 1) '(1 1 1) '(1 2 1) '(1 3 1) '(1 4 1) '(1 5 1)
        '(2 0 1) '(2 1 1) '(2 2 1) '(2 3 1) '(2 4 1) '(2 5 1)
@@ -206,7 +232,8 @@
        '(4 0 1) '(4 1 1) '(4 2 1) '(4 3 1) '(4 4 1) '(4 5 1)
        ))
 
-; клетка однозначно задается своим левым верхним углом
+;; клетки, которые заполняются метками игрока
+;; клетка однозначно задается своим левым верхним углом
 (define all-cells
   (set '(0 0 0) '(0 1 0) '(0 2 0) '(0 3 0) '(0 4 0)
        '(1 0 0) '(1 1 0) '(1 2 0) '(1 3 0) '(1 4 0)
@@ -215,9 +242,11 @@
        '(4 0 0) '(4 1 0) '(4 2 0) '(4 3 0) '(4 4 0)
        ))
 
+;; множество свободных палочек (доступных для хода)
 (define (free-sticks b)
   (set-subtract all-sticks (sticks b)))
 
+;; всевозможные комбинации палочек, образующих квадрат
 (define squares-positions
   (mlist (list '(0 0 0) '(0 0 1) '(0 1 1) '(1 0 0)) (list '(0 1 0) '(0 1 1) '(0 2 1) '(1 1 0))
         (list '(0 2 0) '(0 2 1) '(0 3 1) '(1 2 0)) (list '(0 3 0) '(0 3 1) '(0 4 1) '(1 3 0))
@@ -235,11 +264,11 @@
         (list '(4 2 0) '(4 2 1) '(4 3 1) '(5 2 0)) (list '(4 3 0) '(4 3 1) '(4 4 1) '(5 3 0))
         (list '(4 4 0) '(4 4 1) '(4 5 1) '(5 4 0))))
         
-
+;; предикат, проверяющий образование квадрата из имеющихся ходов
 (define (is-square? s squares)
   (ormap (lambda (x) (if (andmap (lambda (y) (member y (set->list (sticks s)))) x) x #f)) (mlist->list squares)))
 
-;; определение побудившего игрока
+;; определение победившего игрока
 (define (check-win b)
   (let ((a-count (set-count (as b)))
         (b-count (set-count (bs b))))
@@ -250,10 +279,8 @@
           (printf "User A wins!")
           (printf "User B wins"))))) 
 
-
+;; ход игрока А (с учетом возможного образования сразу двух квадратов)
 (define (a-move b m remove_flag)
-  ;(!(displayln "This is A move"))
-  ;; рассмотреть случай, когда образуется два квадрата
   (let* ((S* (board (set-add (sticks b) m) (as b) (bs b)))
          (sq (is-square? S* squares-positions)))
     (if sq
@@ -266,9 +293,8 @@
               S**))
         S*)))
 
+;; ход игрока В (с учетом возможного образования сразу двух квадратов)
 (define (b-move b m remove_flag)
-  ;(!(displayln "This is B move"))
-  ;; рассмотреть случай, когда образуется два квадрата
   (let* ((S* (board (set-add (sticks b) m) (as b) (bs b)))
         (sq (is-square? S* squares-positions)))
     (if sq
@@ -285,6 +311,7 @@
 (define ((wins? s-my s-op) b)
   (or (> (set-count (s-my b)) 12) (and (set-empty? (free-sticks b)) (> (set-count (s-my b)) (set-count (s-op b))))))
 
+;; экземпляр класса игры dots and boxes
 (define dots-and-boxes%
   (class game%
     (super-new
@@ -295,7 +322,6 @@
 (define-partners dots-and-boxes%
   (a% #:win (wins? as bs) #:move a-move)
   (b% #:win (wins? bs as) #:move b-move))
-
 
 ;; объекты-игроки, принимающие ввод пользователя
 ;; проверка ввода частичная
@@ -315,22 +341,27 @@
               ('(3 0 1) m) ('(3 1 1) m) ('(3 2 1) m) ('(3 3 1) m) ('(3 4 1) m) ('(3 5 1) m)
               ('(4 0 1) m) ('(4 1 1) m) ('(4 2 1) m) ('(4 3 1) m) ('(4 4 1) m) ('(4 5 1) m)
               (else (input-move (read)))))
-				   
+
 (define user-A 
   (new (force (interactive-player a%)) 
        [name "User A"]
+       [gui #t]
        [move-method 
         (lambda (b) (input-move (read)))]
 		)
- )
+)
 
+;; второй игрок-пользователь с ожиданием ввода хода
 (define user-B 
   (new (force (interactive-player b%)) 
        [name "User B"]
+       [gui #t]
        [move-method 
         (lambda (b) (input-move (read)))]
 		)
- )
+)
+
+;; ИИ-игроки
 (define player-A (new (force (interactive-player a%))
                       [name "A"]
                       [look-ahead 2]))
