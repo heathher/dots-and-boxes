@@ -3,11 +3,8 @@
 (provide game% interactive-player a% b% input-move empty-board start-game user-A user-B player-A player-B
          cur-board as bs my-turn sticks end-game?)
 
-
+;; флаг хода первого игрока (gui)
 (define my-turn #t)
-
-;; первый игрок-пользователь с ожиданием ввода хода				   
-
 
 ;;--------------------------------------------------------------------
 ;; Реализация минимакса с альфа-бета отсечением
@@ -39,18 +36,17 @@
 (define (open-4-cells as/bs b)
   (set-subtract (free-sticks b) (as/bs b)))
 
-;; получить количество линий игровой доски, открытых для одного из игроков
+;; получить количество квадратов, которые можно составить при помощи определенной палочки
 (define (count-open-4 l)
    (foldl (lambda (x y) (if (subset? (list->set x) l) (+ 1 y) y)) 0 (mlist->list squares-positions)))
  
 ;; функция эвристической оценки позиции
-;; из количества линий, открытых для крестиков, вычитается количество линий, открытых для ноликов
+;; из количества квадратов для первого игрока вычитается количество квадратов второго игрока
 (define (f-h s)
   (- (count-open-4 (open-4-cells as s)) (count-open-4 (open-4-cells bs s)))
 )  
 
-
-
+;; функция старта игры через консоль
 (define (start-game p1 p2 initial-state)
   (set-field! opponent p1 p2)
   (set-field! opponent p2 p1)
@@ -75,9 +71,9 @@
                  (shuffle (possible-moves S)))))
 
     ;; game-tree :: State -> (Move -> (Tree of Real))
-	;; построение дерева с оценками
+    ;; построение дерева с оценками
     (define (game-tree St m look-ahead)
-	   ;; вспомогательная функция, строящая закольцованный список из пары элементов
+      ;; вспомогательная функция, строящая закольцованный список из пары элементов
       (define (help a b) (begin (define l (mlist a b a)) (set-mcdr! l (mcons b l)) l))
       (define (new-ply moves i s)	  
         (cond
@@ -113,17 +109,17 @@
     (inherit make-move optimal-move)
     
     (init-field name
-                [last-move '(0 0 0)] ; для гуи
-                [gui #f]       ; для гуи 
+                [last-move '(0 0 0)] ;; последний ход игрока (gui)
+                [gui #f]       ;; идентификатор игрока-пользователя (ввод хода осуществляется через gui)
                 [look-ahead 1]
                 [move-method (optimal-move look-ahead)]
                 [opponent 'undefined]
                 )
 
-    ;; для гуи
+    ;; сеттер последнего хода игрока (используется в gui)
     (define/public (set!-value move)
       (set! last-move move))
-
+    ;; геттер последнего хода игрока
     (define/public (get-move) last-move)
  
     (define/public (your-turn S)
@@ -143,14 +139,13 @@
               (if sq
                   (begin
                     (set! squares-positions (list->mlist (remove sq (mlist->list squares-positions))))
-                    ;(send this your-turn S*))
+                    ;(send this your-turn S*)) ;; раскомментить для режима без gui
                   )
                   (if my-turn
                       (set! my-turn #f)
                       (set! my-turn #t))
-                  ;(send opponent your-turn S*)
-                  
-                      ))]
+                  ;(send opponent your-turn S*) ;; раскомментить для режима без gui
+                  ))]
            )))))
 
 ;;--------------------------------------------------------------------
@@ -202,7 +197,6 @@
 ;; доска задается при помощи палочек и букв первого и второго игрока
 (struct board (sticks a b))
 
-
 ;; геттеры полей структуры доски
 (define sticks board-sticks)
 (define as board-a)
@@ -211,6 +205,7 @@
 ;; начальное состояние доски
 (define empty-board (board (set) (set) (set)))
 
+;; объект доски для взаимодействия между игроками (необходим при использовании gui)
 (define cur-board empty-board)
 
 ;; все возможные ходы игрока
@@ -342,6 +337,7 @@
               ('(4 0 1) m) ('(4 1 1) m) ('(4 2 1) m) ('(4 3 1) m) ('(4 4 1) m) ('(4 5 1) m)
               (else (input-move (read)))))
 
+;; первый игрок-пользователь с ожиданием ввода хода				   
 (define user-A 
   (new (force (interactive-player a%)) 
        [name "User A"]
