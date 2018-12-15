@@ -34,7 +34,7 @@
 
 ;; получить все ячейки игровой доски, не занятые ходами одного из игроков 
 (define (open-4-cells as/bs b)
-  (set-subtract (free-sticks b) (as/bs b)))
+  (set-subtract all-sticks (as/bs b)))
 
 ;; получить количество квадратов, которые можно составить при помощи определенной палочки
 (define (count-open-4 l)
